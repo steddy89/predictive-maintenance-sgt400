@@ -1,0 +1,48 @@
+# ===========================================================================
+# SGT-400 Predictive Maintenance – Docker Compose (local development)
+# ===========================================================================
+# Usage:
+#   docker compose up --build
+#   docker compose up -d           # detached
+#   docker compose down -v         # tear down with volumes
+# ===========================================================================
+
+version: "3.9"
+
+services:
+  # ----------------------------------------------------------------
+  # FastAPI Backend
+  # ----------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sgt400-backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=dev
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  # ----------------------------------------------------------------
+  # React Frontend (nginx)
+  # ----------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: sgt400-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped

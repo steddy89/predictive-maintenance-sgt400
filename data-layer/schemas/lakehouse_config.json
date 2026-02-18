@@ -1,0 +1,12 @@
+{
+    "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+    "metadata": {
+        "type": "Lakehouse",
+        "displayName": "predictive_maintenance_sgt400",
+        "description": "Medallion Lakehouse for SGT400 Gas Turbine Predictive Maintenance"
+    },
+    "config": {
+        "version": "2.0",
+        "logicalId": "predmaint-sgt400-lakehouse"
+    }
+}
