@@ -13,6 +13,25 @@ logger = logging.getLogger(__name__)
 fabric_service = FabricDataService()
 
 
+@router.get("/live")
+async def get_live_reading(
+    turbine_id: str = Query(default="SGT400-001", description="Turbine identifier"),
+):
+    """
+    Return the next live data point from the dataset.
+
+    Each call advances an internal pointer, cycling through the full
+    CSV.  The timestamp is set to *now* so the dashboard feels real-time.
+    Call this every 2 seconds for the live feed.
+    """
+    try:
+        reading = await fabric_service.get_live_reading(turbine_id)
+        return {"status": "success", "data": reading}
+    except Exception as e:
+        logger.error(f"Error fetching live reading: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/status", response_model=TurbineStatusResponse)
 async def get_turbine_status(
     turbine_id: str = Query(default="SGT400-001", description="Turbine identifier")

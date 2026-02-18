@@ -86,14 +86,14 @@ tailwind.config = {
       <div class="text-3xl font-bold" id="anomalyValue">--</div>
       <div class="text-sm mt-1" id="anomalyLabel"></div>
     </div>
-    <!-- RUL -->
+    <!-- Fault Status -->
     <div class="bg-dark-card rounded-xl border border-dark-border p-5 fade-in">
       <div class="flex items-center justify-between mb-3">
-        <span class="text-gray-400 text-sm font-medium">Remaining Useful Life</span>
-        <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <span class="text-gray-400 text-sm font-medium">Fault Detection</span>
+        <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
       </div>
-      <div class="text-3xl font-bold" id="rulValue">--</div>
-      <div class="text-sm text-gray-400 mt-1" id="rulConfidence"></div>
+      <div class="text-3xl font-bold" id="faultValue">--</div>
+      <div class="text-sm text-gray-400 mt-1">Real-time fault classifier</div>
     </div>
     <!-- Risk Level -->
     <div class="bg-dark-card rounded-xl border border-dark-border p-5 fade-in" id="kpiRisk">
@@ -111,7 +111,7 @@ tailwind.config = {
     <!-- Trend Chart -->
     <div class="lg:col-span-2 bg-dark-card rounded-xl border border-dark-border p-5">
       <div class="flex items-center justify-between mb-4">
-        <h2 class="text-lg font-semibold">Sensor Trends (24h)</h2>
+        <h2 class="text-lg font-semibold">Live Sensor Feed <span class="text-xs text-blue-400 ml-2 font-normal">● streaming every 2s</span></h2>
         <select id="sensorSelect" class="bg-gray-700 text-gray-200 text-sm rounded-lg px-3 py-1.5 border border-dark-border">
           <option value="temperature_c">Temperature (°C)</option>
           <option value="rpm">RPM</option>
@@ -149,11 +149,33 @@ tailwind.config = {
       </div>
     </div>
 
-    <!-- Maintenance Recommendations -->
+    <!-- Data Stream Info -->
     <div class="bg-dark-card rounded-xl border border-dark-border p-5">
-      <h2 class="text-lg font-semibold mb-4">Maintenance Prediction</h2>
-      <div id="maintenancePanel" class="space-y-4">
-        <p class="text-gray-500 text-sm">Loading...</p>
+      <h2 class="text-lg font-semibold mb-4">Dataset Stream</h2>
+      <div class="space-y-4">
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-gray-400 text-sm">Progress through dataset</span>
+            <span class="text-xs text-gray-500 font-mono" id="dataProgressText">-- / --</span>
+          </div>
+          <div class="w-full bg-gray-700 rounded-full h-2">
+            <div id="dataProgress" class="bg-blue-500 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+          </div>
+        </div>
+        <div class="bg-gray-800/50 rounded-lg p-3">
+          <div class="text-sm font-medium text-gray-300 mb-1">About</div>
+          <div class="text-sm text-gray-400">Streaming 1,386 real sensor readings from the gas turbine fault detection dataset at 2-second intervals. Red dots on the chart indicate detected faults.</div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="bg-gray-800/50 rounded-lg p-3 text-center">
+            <div class="text-xs text-gray-400">Interval</div>
+            <div class="text-lg font-bold text-blue-400">2s</div>
+          </div>
+          <div class="bg-gray-800/50 rounded-lg p-3 text-center">
+            <div class="text-xs text-gray-400">Chart Window</div>
+            <div class="text-lg font-bold text-gray-200">60 pts</div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -162,7 +184,7 @@ tailwind.config = {
   <div class="bg-dark-card rounded-xl border border-dark-border p-4 flex items-center justify-between">
     <div>
       <span class="text-gray-400 text-sm">API Documentation</span>
-      <span class="text-gray-500 text-xs ml-2">Interactive Swagger UI for all endpoints</span>
+      <span class="text-gray-500 text-xs ml-2">Interactive Swagger UI for all endpoints · Live feed at /api/v1/turbine/live</span>
     </div>
     <a href="/docs" target="_blank" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
       Open API Docs →
@@ -177,6 +199,14 @@ tailwind.config = {
 <script>
 const API = '';  // Same origin
 let trendChart = null;
+
+// ── Configuration ──────────────────────────────────────────────
+const LIVE_INTERVAL_MS = 2000;    // poll every 2 seconds
+const MAX_CHART_POINTS = 60;      // keep 60 data points visible (120s window)
+
+// ── State ──────────────────────────────────────────────────────
+let liveHistory = [];             // ring buffer of recent readings
+let selectedSensor = 'temperature_c';
 
 // ── Utility Functions ──────────────────────────────────────────
 function riskColor(level) {
@@ -193,195 +223,128 @@ function severityBg(sev) {
 }
 function fmtTime(ts) {
   const d = new Date(ts);
-  return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+  return d.getHours().toString().padStart(2,'0') + ':' +
+         d.getMinutes().toString().padStart(2,'0') + ':' +
+         d.getSeconds().toString().padStart(2,'0');
 }
 
-// ── Fetch helpers ──────────────────────────────────────────────
+// ── Fetch helper ───────────────────────────────────────────────
 async function api(path) {
   const res = await fetch(API + path);
   if (!res.ok) throw new Error(`${res.status}`);
   return res.json();
 }
 
-// ── KPI Update ─────────────────────────────────────────────────
-async function updateKPIs() {
+// ── Live Data Feed — single source of truth ────────────────────
+async function fetchLiveReading() {
   try {
-    const [status, anomaly, failure] = await Promise.all([
-      api('/api/v1/turbine/status'),
-      api('/api/v1/predictions/anomaly'),
-      api('/api/v1/predictions/failure'),
-    ]);
+    const resp = await api('/api/v1/turbine/live');
+    const d = resp.data;
 
-    const s = status.data;
-    const a = anomaly.result;
-    const f = failure.prediction;
+    // Push into ring buffer
+    liveHistory.push(d);
+    if (liveHistory.length > MAX_CHART_POINTS) liveHistory.shift();
 
-    // Health Score
-    const health = s.health_score;
-    document.getElementById('healthValue').textContent = health.toFixed(1) + '%';
-    const hbar = document.getElementById('healthBar');
-    hbar.style.width = health + '%';
-    hbar.className = 'h-2 rounded-full transition-all duration-500 ' +
-      (health >= 80 ? 'bg-turbine-green' : health >= 60 ? 'bg-turbine-yellow' : health >= 40 ? 'bg-turbine-orange' : 'bg-turbine-red');
-
-    // Anomaly
-    const aScore = a.anomaly_score;
-    document.getElementById('anomalyValue').textContent = (aScore * 100).toFixed(1) + '%';
-    const aLabel = document.getElementById('anomalyLabel');
-    if (aScore > 0.7) { aLabel.textContent = 'CRITICAL'; aLabel.className = 'text-sm mt-1 text-turbine-red font-semibold'; }
-    else if (aScore > 0.4) { aLabel.textContent = 'WARNING'; aLabel.className = 'text-sm mt-1 text-turbine-yellow font-semibold'; }
-    else { aLabel.textContent = 'NORMAL'; aLabel.className = 'text-sm mt-1 text-turbine-green font-semibold'; }
-
-    // RUL
-    document.getElementById('rulValue').textContent = f.rul_days.toFixed(1) + ' days';
-    document.getElementById('rulConfidence').textContent = 'Confidence: ' + f.confidence;
-
-    // Risk
-    const risk = f.risk_level || s.risk_level;
-    document.getElementById('riskValue').textContent = risk;
-    document.getElementById('riskValue').className = 'text-3xl font-bold text-' + riskColor(risk);
-    document.getElementById('riskRecommendation').textContent = f.recommendation;
-
-    // Header badge
-    const badge = document.getElementById('riskBadge');
-    badge.textContent = risk;
-    badge.className = 'px-3 py-1 rounded-full text-sm font-semibold bg-' + riskColor(risk) + '/20 text-' + riskColor(risk);
-
-    // Sensor readings panel
-    const sensors = [
-      { name: 'Temperature', value: s.temperature_c, unit: '°C', max: 1100 },
-      { name: 'RPM', value: s.rpm, unit: '', max: 17000 },
-      { name: 'Torque', value: s.torque_nm, unit: 'Nm', max: 4500 },
-      { name: 'Vibration', value: s.vibration_mm_s, unit: 'mm/s', max: 5 },
-      { name: 'Power Output', value: s.power_output_mw, unit: 'MW', max: 140 },
-      { name: 'Fuel Flow', value: s.fuel_flow_kg_s, unit: 'kg/s', max: 4 },
-      { name: 'Air Pressure', value: s.air_pressure_kpa, unit: 'kPa', max: 220 },
-      { name: 'Exhaust Gas Temp', value: s.exhaust_gas_temp_c, unit: '°C', max: 600 },
-      { name: 'Oil Temp', value: s.oil_temp_c, unit: '°C', max: 160 },
-    ];
-    document.getElementById('sensorList').innerHTML = sensors.map(s => `
-      <div class="flex items-center justify-between py-2 border-b border-dark-border last:border-0">
-        <span class="text-gray-400 text-sm">${s.name}</span>
-        <span class="font-mono font-semibold text-sm">${s.value.toFixed(2)} ${s.unit}</span>
-      </div>
-    `).join('');
-
-    // Maintenance panel
-    document.getElementById('maintenancePanel').innerHTML = `
-      <div class="flex items-center gap-3 mb-3">
-        <div class="w-12 h-12 rounded-lg bg-${riskColor(risk)}/20 flex items-center justify-center">
-          <svg class="w-6 h-6 text-${riskColor(risk)}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-          </svg>
-        </div>
-        <div>
-          <div class="font-semibold">Failure Probability: ${(f.failure_probability * 100).toFixed(1)}%</div>
-          <div class="text-sm text-gray-400">Degradation Index: ${f.degradation_index.toFixed(3)}</div>
-        </div>
-      </div>
-      <div class="bg-gray-800/50 rounded-lg p-3">
-        <div class="text-sm font-medium text-gray-300 mb-1">Recommendation</div>
-        <div class="text-sm text-gray-400">${f.recommendation}</div>
-      </div>
-      <div class="grid grid-cols-2 gap-3 mt-2">
-        <div class="bg-gray-800/50 rounded-lg p-3 text-center">
-          <div class="text-xs text-gray-400">RUL</div>
-          <div class="text-lg font-bold text-blue-400">${f.rul_days.toFixed(1)}d</div>
-        </div>
-        <div class="bg-gray-800/50 rounded-lg p-3 text-center">
-          <div class="text-xs text-gray-400">Degradation Rate</div>
-          <div class="text-lg font-bold text-gray-200">${(f.degradation_rate * 1e4).toFixed(2)}e-4</div>
-        </div>
-      </div>
-    `;
-
-    // Timestamp
-    document.getElementById('lastUpdate').textContent = 'Updated ' + new Date().toLocaleTimeString();
-    document.getElementById('connDot').className = 'w-2 h-2 rounded-full bg-turbine-green pulse-dot';
-    document.getElementById('connText').textContent = 'Connected';
+    // Update everything from this single reading
+    updateKPIsFromLive(d);
+    updateSensorPanel(d);
+    updateChartFromLive();
+    updateConnectionStatus(true);
+    updateProgressBar(d);
   } catch (err) {
-    console.error('KPI update failed:', err);
-    document.getElementById('connDot').className = 'w-2 h-2 rounded-full bg-turbine-red';
-    document.getElementById('connText').textContent = 'Disconnected';
+    console.error('Live feed error:', err);
+    updateConnectionStatus(false);
   }
 }
 
-// ── Alerts ─────────────────────────────────────────────────────
-async function updateAlerts() {
-  try {
-    const data = await api('/api/v1/alerts/');
-    const alerts = data.alerts || [];
-    const active = alerts.filter(a => !a.resolved);
+// ── KPI Cards ──────────────────────────────────────────────────
+function updateKPIsFromLive(d) {
+  // Health Score
+  const health = d.health_score;
+  document.getElementById('healthValue').textContent = health.toFixed(1) + '%';
+  const hbar = document.getElementById('healthBar');
+  hbar.style.width = health + '%';
+  hbar.className = 'h-2 rounded-full transition-all duration-500 ' +
+    (health >= 80 ? 'bg-turbine-green' : health >= 60 ? 'bg-turbine-yellow' : health >= 40 ? 'bg-turbine-orange' : 'bg-turbine-red');
 
-    document.getElementById('alertCount').textContent = active.length;
+  // Anomaly Score
+  const aScore = d.anomaly_score;
+  document.getElementById('anomalyValue').textContent = (aScore * 100).toFixed(1) + '%';
+  const aLabel = document.getElementById('anomalyLabel');
+  if (aScore > 0.7) { aLabel.textContent = 'CRITICAL'; aLabel.className = 'text-sm mt-1 text-turbine-red font-semibold'; }
+  else if (aScore > 0.4) { aLabel.textContent = 'WARNING'; aLabel.className = 'text-sm mt-1 text-turbine-yellow font-semibold'; }
+  else { aLabel.textContent = 'NORMAL'; aLabel.className = 'text-sm mt-1 text-turbine-green font-semibold'; }
 
-    if (active.length === 0) {
-      document.getElementById('alertList').innerHTML = '<p class="text-gray-500 text-sm">No active alerts — system nominal</p>';
-      return;
-    }
+  // Fault indicator
+  const faultBadge = d.fault === 1 ? '⚠ FAULT' : '✓ NORMAL';
+  document.getElementById('faultValue').textContent = faultBadge;
+  document.getElementById('faultValue').className = 'text-3xl font-bold ' +
+    (d.fault === 1 ? 'text-turbine-red' : 'text-turbine-green');
 
-    document.getElementById('alertList').innerHTML = active.map(a => `
-      <div class="border rounded-lg p-3 ${severityBg(a.severity)}">
-        <div class="flex items-center justify-between">
-          <span class="text-xs font-semibold px-2 py-0.5 rounded ${a.severity === 'CRITICAL' ? 'bg-red-500/30 text-red-300' : 'bg-yellow-500/30 text-yellow-300'}">${a.severity}</span>
-          <span class="text-xs text-gray-400">${fmtTime(a.timestamp)}</span>
+  // Risk
+  const risk = d.risk_level;
+  document.getElementById('riskValue').textContent = risk;
+  document.getElementById('riskValue').className = 'text-3xl font-bold text-' + riskColor(risk);
+
+  // Header badge
+  const badge = document.getElementById('riskBadge');
+  badge.textContent = risk;
+  badge.className = 'px-3 py-1 rounded-full text-sm font-semibold bg-' + riskColor(risk) + '/20 text-' + riskColor(risk);
+
+  // Timestamp
+  document.getElementById('lastUpdate').textContent = 'Updated ' + fmtTime(d.timestamp);
+}
+
+// ── Sensor Readings Panel ──────────────────────────────────────
+function updateSensorPanel(d) {
+  const sensors = [
+    { name: 'Temperature', value: d.temperature_c, unit: '°C', max: 1100 },
+    { name: 'RPM', value: d.rpm, unit: '', max: 17000 },
+    { name: 'Torque', value: d.torque_nm, unit: 'Nm', max: 4500 },
+    { name: 'Vibration', value: d.vibration_mm_s, unit: 'mm/s', max: 5 },
+    { name: 'Power Output', value: d.power_output_mw, unit: 'MW', max: 140 },
+    { name: 'Fuel Flow', value: d.fuel_flow_kg_s, unit: 'kg/s', max: 4 },
+    { name: 'Air Pressure', value: d.air_pressure_kpa, unit: 'kPa', max: 220 },
+    { name: 'Exhaust Gas Temp', value: d.exhaust_gas_temp_c, unit: '°C', max: 600 },
+    { name: 'Oil Temp', value: d.oil_temp_c, unit: '°C', max: 160 },
+  ];
+  document.getElementById('sensorList').innerHTML = sensors.map(s => {
+    const pct = Math.min(100, (s.value / s.max) * 100);
+    const barColor = pct > 90 ? 'bg-turbine-red' : pct > 75 ? 'bg-turbine-orange' : pct > 60 ? 'bg-turbine-yellow' : 'bg-blue-500';
+    return `
+      <div class="py-2 border-b border-dark-border last:border-0">
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-gray-400 text-sm">${s.name}</span>
+          <span class="font-mono font-semibold text-sm">${s.value.toFixed(2)} ${s.unit}</span>
         </div>
-        <div class="mt-2 text-sm font-medium">${a.description}</div>
-        <div class="mt-1 text-xs text-gray-400">${a.alarm_code} &middot; Value: ${a.sensor_value} / Threshold: ${a.threshold}</div>
-        ${!a.acknowledged ? `<button onclick="ackAlert('${a.id}')" class="mt-2 text-xs bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded transition-colors">Acknowledge</button>` : '<span class="mt-2 inline-block text-xs text-gray-500">Acknowledged</span>'}
-      </div>
-    `).join('');
-  } catch (err) {
-    console.error('Alert update failed:', err);
-  }
+        <div class="w-full bg-gray-700 rounded-full h-1.5">
+          <div class="${barColor} h-1.5 rounded-full transition-all duration-500" style="width: ${pct}%"></div>
+        </div>
+      </div>`;
+  }).join('');
 }
 
-async function ackAlert(id) {
-  try {
-    await fetch(API + '/api/v1/alerts/acknowledge', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ alert_id: id }),
-    });
-    updateAlerts();
-  } catch (err) { console.error(err); }
-}
+// ── Live Trend Chart ───────────────────────────────────────────
+function updateChartFromLive() {
+  const labels = liveHistory.map(p => fmtTime(p.timestamp));
+  const values = liveHistory.map(p => p[selectedSensor] ?? 0);
+  const prettyName = selectedSensor.replace(/_/g, ' ');
 
-// ── Trend Chart (horizontal scrolling, real-time feel) ─────────
-const MAX_VISIBLE_POINTS = 40; // show ~40 min scrolling window
-let trendBuffer = [];          // full data from API
-let trendOffset = 0;           // current scroll offset (auto-advances)
-
-async function updateTrend() {
-  const sensor = document.getElementById('sensorSelect').value;
-  try {
-    const data = await api(`/api/v1/turbine/trend/${sensor}`);
-    const points = data.data || data.trend || [];
-
-    trendBuffer = points;
-    // Start at the right-most window so newest data is visible
-    trendOffset = Math.max(0, points.length - MAX_VISIBLE_POINTS);
-
-    renderTrendWindow(sensor);
-  } catch (err) {
-    console.error('Trend update failed:', err);
-  }
-}
-
-function renderTrendWindow(sensor) {
-  const window = trendBuffer.slice(trendOffset, trendOffset + MAX_VISIBLE_POINTS);
-  const labels = window.map(p => fmtTime(p.timestamp));
-  const values = window.map(p => p.value);
-
-  if (!sensor) sensor = document.getElementById('sensorSelect').value;
-  const prettyName = sensor.replace(/_/g, ' ');
+  // Fault markers — highlight points where fault == 1
+  const pointColors = liveHistory.map(p =>
+    p.fault === 1 ? '#ef4444' : '#3b82f6'
+  );
+  const pointRadii = liveHistory.map(p =>
+    p.fault === 1 ? 5 : 1.5
+  );
 
   if (trendChart) {
     trendChart.data.labels = labels;
     trendChart.data.datasets[0].data = values;
     trendChart.data.datasets[0].label = prettyName;
-    trendChart.update('active');           // animate the transition
+    trendChart.data.datasets[0].pointBackgroundColor = pointColors;
+    trendChart.data.datasets[0].pointRadius = pointRadii;
+    trendChart.update('active');
   } else {
     const ctx = document.getElementById('trendChart').getContext('2d');
     trendChart = new Chart(ctx, {
@@ -395,37 +358,33 @@ function renderTrendWindow(sensor) {
           backgroundColor: 'rgba(59,130,246,0.08)',
           fill: true,
           tension: 0.35,
-          pointRadius: 1.5,
-          pointHoverRadius: 5,
+          pointRadius: pointRadii,
+          pointBackgroundColor: pointColors,
+          pointHoverRadius: 6,
           borderWidth: 2,
         }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        animation: {
-          duration: 350,
-          easing: 'easeOutQuart',
-        },
+        animation: { duration: 400, easing: 'easeOutQuart' },
         plugins: {
           legend: { labels: { color: '#94a3b8' } },
           tooltip: {
-            mode: 'index',
-            intersect: false,
-            backgroundColor: '#1e293b',
-            borderColor: '#334155',
-            borderWidth: 1,
+            mode: 'index', intersect: false,
+            backgroundColor: '#1e293b', borderColor: '#334155', borderWidth: 1,
+            callbacks: {
+              afterLabel: function(ctx) {
+                const idx = ctx.dataIndex;
+                const pt = liveHistory[idx];
+                return pt && pt.fault === 1 ? '⚠ FAULT DETECTED' : '';
+              }
+            }
           },
         },
         scales: {
-          x: {
-            ticks: { color: '#64748b', maxTicksLimit: 10, maxRotation: 0 },
-            grid: { color: 'rgba(51,65,85,0.3)' },
-          },
-          y: {
-            ticks: { color: '#64748b' },
-            grid: { color: 'rgba(51,65,85,0.3)' },
-          }
+          x: { ticks: { color: '#64748b', maxTicksLimit: 10, maxRotation: 0 }, grid: { color: 'rgba(51,65,85,0.3)' } },
+          y: { ticks: { color: '#64748b' }, grid: { color: 'rgba(51,65,85,0.3)' } }
         },
         interaction: { intersect: false, mode: 'index' },
       }
@@ -433,28 +392,67 @@ function renderTrendWindow(sensor) {
   }
 }
 
-// Auto-scroll: every 800 ms advance the window 1 point to the right
-let scrollTimer = setInterval(() => {
-  if (!trendBuffer.length) return;
-  const maxOffset = Math.max(0, trendBuffer.length - MAX_VISIBLE_POINTS);
-  if (trendOffset < maxOffset) {
-    trendOffset += 1;
-    renderTrendWindow();
-  } else {
-    // Loop back to the beginning for continuous real-time effect
-    trendOffset = 0;
-    renderTrendWindow();
+// ── Progress bar showing position in dataset ───────────────────
+function updateProgressBar(d) {
+  const pct = ((d.index / d.total_rows) * 100).toFixed(1);
+  document.getElementById('dataProgress').style.width = pct + '%';
+  document.getElementById('dataProgressText').textContent = `Row ${d.index} / ${d.total_rows}`;
+}
+
+// ── Connection indicator ───────────────────────────────────────
+function updateConnectionStatus(ok) {
+  document.getElementById('connDot').className = ok
+    ? 'w-2 h-2 rounded-full bg-turbine-green pulse-dot'
+    : 'w-2 h-2 rounded-full bg-turbine-red';
+  document.getElementById('connText').textContent = ok ? 'Live · 2s' : 'Disconnected';
+}
+
+// ── Alerts (less frequent polling) ─────────────────────────────
+async function updateAlerts() {
+  try {
+    const data = await api('/api/v1/alerts/');
+    const alerts = data.alerts || [];
+    const active = alerts.filter(a => !a.resolved);
+
+    document.getElementById('alertCount').textContent = active.length;
+
+    if (active.length === 0) {
+      document.getElementById('alertList').innerHTML = '<p class="text-gray-500 text-sm">No active alerts — system nominal</p>';
+      return;
+    }
+
+    document.getElementById('alertList').innerHTML = active.slice(0, 8).map(a => `
+      <div class="border rounded-lg p-3 ${severityBg(a.severity)}">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-semibold px-2 py-0.5 rounded ${a.severity === 'CRITICAL' ? 'bg-red-500/30 text-red-300' : 'bg-yellow-500/30 text-yellow-300'}">${a.severity}</span>
+          <span class="text-xs text-gray-400">${fmtTime(a.timestamp)}</span>
+        </div>
+        <div class="mt-2 text-sm font-medium">${a.description}</div>
+        <div class="mt-1 text-xs text-gray-400">${a.alarm_code} · Value: ${a.sensor_value} / Threshold: ${a.threshold}</div>
+      </div>
+    `).join('');
+  } catch (err) {
+    console.error('Alert update failed:', err);
   }
-}, 800);
+}
 
-document.getElementById('sensorSelect').addEventListener('change', updateTrend);
+// ── Sensor selector change ─────────────────────────────────────
+document.getElementById('sensorSelect').addEventListener('change', (e) => {
+  selectedSensor = e.target.value;
+  updateChartFromLive();
+});
 
-// ── Polling ────────────────────────────────────────────────────
+// ── Init & polling ─────────────────────────────────────────────
 async function init() {
-  await Promise.all([updateKPIs(), updateAlerts(), updateTrend()]);
-  setInterval(updateKPIs, 10000);
+  // Kick off first reading immediately
+  await fetchLiveReading();
+  await updateAlerts();
+
+  // Live data every 2 seconds
+  setInterval(fetchLiveReading, LIVE_INTERVAL_MS);
+
+  // Alerts every 15 seconds
   setInterval(updateAlerts, 15000);
-  setInterval(updateTrend, 60000);
 }
 
 init();

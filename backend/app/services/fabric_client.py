@@ -52,6 +52,8 @@ class FabricDataService:
 
     def __init__(self):
         self._df: pd.DataFrame | None = None
+        self._live_index: int = 0          # cycles through rows for live feed
+        self._live_start: datetime | None = None  # wall-clock time of first live call
 
     # ------------------------------------------------------------------
     # Data loading
@@ -235,3 +237,44 @@ class FabricDataService:
             alerts = [a for a in alerts if a["severity"] == severity]
 
         return alerts
+
+    # ------------------------------------------------------------------
+    # Live streaming — one row per call, cycling through the dataset
+    # ------------------------------------------------------------------
+    async def get_live_reading(self, turbine_id: str = "SGT400-001") -> dict:
+        """Return the next data point and advance the internal pointer.
+
+        Each call returns one row from the CSV (cycling).  The timestamp
+        is set to *now* so the dashboard feels truly real-time.
+        """
+        self._ensure_data()
+        n = len(self._df)
+        row = self._df.iloc[self._live_index % n]
+        self._live_index = (self._live_index + 1) % n
+
+        now = datetime.now()
+        health = float(row["health_score"])
+
+        return {
+            "turbine_id": turbine_id,
+            "timestamp": now.isoformat(),
+            "index": self._live_index,
+            "total_rows": n,
+            "health_score": round(health, 1),
+            "anomaly_score": round(float(row["anomaly_score"]), 4),
+            "risk_level": (
+                "LOW" if health >= 80 else
+                "MEDIUM" if health >= 60 else
+                "HIGH" if health >= 40 else "CRITICAL"
+            ),
+            "temperature_c": round(float(row["temperature_c"]), 1),
+            "rpm": round(float(row["rpm"]), 0),
+            "torque_nm": round(float(row["torque_nm"]), 1),
+            "vibration_mm_s": round(float(row["vibration_mm_s"]), 3),
+            "power_output_mw": round(float(row["power_output_mw"]), 2),
+            "fuel_flow_kg_s": round(float(row["fuel_flow_kg_s"]), 3),
+            "air_pressure_kpa": round(float(row["air_pressure_kpa"]), 1),
+            "exhaust_gas_temp_c": round(float(row["exhaust_gas_temp_c"]), 1),
+            "oil_temp_c": round(float(row["oil_temp_c"]), 1),
+            "fault": int(row["fault"]),
+        }
