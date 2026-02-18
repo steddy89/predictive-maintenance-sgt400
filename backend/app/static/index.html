@@ -113,15 +113,20 @@ tailwind.config = {
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-lg font-semibold">Sensor Trends (24h)</h2>
         <select id="sensorSelect" class="bg-gray-700 text-gray-200 text-sm rounded-lg px-3 py-1.5 border border-dark-border">
-          <option value="exhaust_gas_temp_c">Exhaust Gas Temp (°C)</option>
+          <option value="temperature_c">Temperature (°C)</option>
+          <option value="rpm">RPM</option>
+          <option value="torque_nm">Torque (Nm)</option>
           <option value="vibration_mm_s">Vibration (mm/s)</option>
-          <option value="discharge_pressure_bar">Discharge Pressure (bar)</option>
-          <option value="turbine_load_mw">Turbine Load (MW)</option>
-          <option value="lube_oil_temp_c">Lube Oil Temp (°C)</option>
+          <option value="power_output_mw">Power Output (MW)</option>
           <option value="fuel_flow_kg_s">Fuel Flow (kg/s)</option>
+          <option value="air_pressure_kpa">Air Pressure (kPa)</option>
+          <option value="exhaust_gas_temp_c">Exhaust Gas Temp (°C)</option>
+          <option value="oil_temp_c">Oil Temp (°C)</option>
         </select>
       </div>
-      <canvas id="trendChart" height="220"></canvas>
+      <div style="position: relative; width: 100%; height: 260px;">
+        <canvas id="trendChart"></canvas>
+      </div>
     </div>
 
     <!-- Live Sensor Readings -->
@@ -244,12 +249,15 @@ async function updateKPIs() {
 
     // Sensor readings panel
     const sensors = [
+      { name: 'Temperature', value: s.temperature_c, unit: '°C', max: 1100 },
+      { name: 'RPM', value: s.rpm, unit: '', max: 17000 },
+      { name: 'Torque', value: s.torque_nm, unit: 'Nm', max: 4500 },
+      { name: 'Vibration', value: s.vibration_mm_s, unit: 'mm/s', max: 5 },
+      { name: 'Power Output', value: s.power_output_mw, unit: 'MW', max: 140 },
+      { name: 'Fuel Flow', value: s.fuel_flow_kg_s, unit: 'kg/s', max: 4 },
+      { name: 'Air Pressure', value: s.air_pressure_kpa, unit: 'kPa', max: 220 },
       { name: 'Exhaust Gas Temp', value: s.exhaust_gas_temp_c, unit: '°C', max: 600 },
-      { name: 'Vibration', value: s.vibration_mm_s, unit: 'mm/s', max: 10 },
-      { name: 'Discharge Pressure', value: s.discharge_pressure_bar, unit: 'bar', max: 20 },
-      { name: 'Turbine Load', value: s.turbine_load_mw, unit: 'MW', max: 15 },
-      { name: 'Efficiency', value: s.efficiency_pct, unit: '%', max: 100 },
-      { name: 'Pressure Ratio', value: s.pressure_ratio, unit: '', max: 20 },
+      { name: 'Oil Temp', value: s.oil_temp_c, unit: '°C', max: 160 },
     ];
     document.getElementById('sensorList').innerHTML = sensors.map(s => `
       <div class="flex items-center justify-between py-2 border-b border-dark-border last:border-0">
@@ -340,71 +348,113 @@ async function ackAlert(id) {
   } catch (err) { console.error(err); }
 }
 
-// ── Trend Chart ────────────────────────────────────────────────
+// ── Trend Chart (horizontal scrolling, real-time feel) ─────────
+const MAX_VISIBLE_POINTS = 40; // show ~40 min scrolling window
+let trendBuffer = [];          // full data from API
+let trendOffset = 0;           // current scroll offset (auto-advances)
+
 async function updateTrend() {
   const sensor = document.getElementById('sensorSelect').value;
   try {
     const data = await api(`/api/v1/turbine/trend/${sensor}`);
     const points = data.data || data.trend || [];
 
-    const labels = points.map(p => fmtTime(p.timestamp));
-    const values = points.map(p => p.value);
+    trendBuffer = points;
+    // Start at the right-most window so newest data is visible
+    trendOffset = Math.max(0, points.length - MAX_VISIBLE_POINTS);
 
-    if (trendChart) {
-      trendChart.data.labels = labels;
-      trendChart.data.datasets[0].data = values;
-      trendChart.data.datasets[0].label = sensor.replace(/_/g, ' ');
-      trendChart.update('none');
-    } else {
-      const ctx = document.getElementById('trendChart').getContext('2d');
-      trendChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels,
-          datasets: [{
-            label: sensor.replace(/_/g, ' '),
-            data: values,
-            borderColor: '#3b82f6',
-            backgroundColor: 'rgba(59,130,246,0.1)',
-            fill: true,
-            tension: 0.3,
-            pointRadius: 0,
-            borderWidth: 2,
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { labels: { color: '#94a3b8' } },
-          },
-          scales: {
-            x: {
-              ticks: { color: '#64748b', maxTicksLimit: 12 },
-              grid: { color: 'rgba(51,65,85,0.3)' },
-            },
-            y: {
-              ticks: { color: '#64748b' },
-              grid: { color: 'rgba(51,65,85,0.3)' },
-            }
-          },
-          interaction: { intersect: false, mode: 'index' },
-        }
-      });
-    }
+    renderTrendWindow(sensor);
   } catch (err) {
     console.error('Trend update failed:', err);
   }
 }
+
+function renderTrendWindow(sensor) {
+  const window = trendBuffer.slice(trendOffset, trendOffset + MAX_VISIBLE_POINTS);
+  const labels = window.map(p => fmtTime(p.timestamp));
+  const values = window.map(p => p.value);
+
+  if (!sensor) sensor = document.getElementById('sensorSelect').value;
+  const prettyName = sensor.replace(/_/g, ' ');
+
+  if (trendChart) {
+    trendChart.data.labels = labels;
+    trendChart.data.datasets[0].data = values;
+    trendChart.data.datasets[0].label = prettyName;
+    trendChart.update('active');           // animate the transition
+  } else {
+    const ctx = document.getElementById('trendChart').getContext('2d');
+    trendChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: prettyName,
+          data: values,
+          borderColor: '#3b82f6',
+          backgroundColor: 'rgba(59,130,246,0.08)',
+          fill: true,
+          tension: 0.35,
+          pointRadius: 1.5,
+          pointHoverRadius: 5,
+          borderWidth: 2,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: {
+          duration: 350,
+          easing: 'easeOutQuart',
+        },
+        plugins: {
+          legend: { labels: { color: '#94a3b8' } },
+          tooltip: {
+            mode: 'index',
+            intersect: false,
+            backgroundColor: '#1e293b',
+            borderColor: '#334155',
+            borderWidth: 1,
+          },
+        },
+        scales: {
+          x: {
+            ticks: { color: '#64748b', maxTicksLimit: 10, maxRotation: 0 },
+            grid: { color: 'rgba(51,65,85,0.3)' },
+          },
+          y: {
+            ticks: { color: '#64748b' },
+            grid: { color: 'rgba(51,65,85,0.3)' },
+          }
+        },
+        interaction: { intersect: false, mode: 'index' },
+      }
+    });
+  }
+}
+
+// Auto-scroll: every 800 ms advance the window 1 point to the right
+let scrollTimer = setInterval(() => {
+  if (!trendBuffer.length) return;
+  const maxOffset = Math.max(0, trendBuffer.length - MAX_VISIBLE_POINTS);
+  if (trendOffset < maxOffset) {
+    trendOffset += 1;
+    renderTrendWindow();
+  } else {
+    // Loop back to the beginning for continuous real-time effect
+    trendOffset = 0;
+    renderTrendWindow();
+  }
+}, 800);
 
 document.getElementById('sensorSelect').addEventListener('change', updateTrend);
 
 // ── Polling ────────────────────────────────────────────────────
 async function init() {
   await Promise.all([updateKPIs(), updateAlerts(), updateTrend()]);
-  setInterval(updateKPIs, 15000);
-  setInterval(updateAlerts, 20000);
-  setInterval(updateTrend, 30000);
+  setInterval(updateKPIs, 10000);
+  setInterval(updateAlerts, 15000);
+  setInterval(updateTrend, 60000);
 }
 
 init();

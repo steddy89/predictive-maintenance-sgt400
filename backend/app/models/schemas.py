@@ -24,16 +24,16 @@ class AlertSeverity(str, Enum):
 class SensorReading(BaseModel):
     timestamp: datetime
     turbine_id: str = "SGT400-001"
-    exhaust_gas_temp_c: float = Field(..., ge=100, le=700)
-    compressor_discharge_temp_c: float = Field(..., ge=100, le=500)
-    vibration_mm_s: float = Field(..., ge=0, le=25)
-    inlet_pressure_bar: float = Field(..., ge=0.5, le=2.0)
-    discharge_pressure_bar: float = Field(..., ge=5, le=25)
-    turbine_load_mw: float = Field(..., ge=0, le=15)
-    fuel_flow_kg_s: float = Field(..., ge=0, le=10)
-    rotor_speed_rpm: float = Field(..., ge=3000, le=12000)
-    lube_oil_temp_c: float = Field(..., ge=10, le=100)
-    ambient_temp_c: float = Field(..., ge=-20, le=60)
+    temperature_c: float = Field(..., ge=700, le=1100, description="Compressor/Turbine Temperature")
+    rpm: float = Field(..., ge=13000, le=17000)
+    torque_nm: float = Field(..., ge=2500, le=4500)
+    vibration_mm_s: float = Field(..., ge=0, le=5)
+    power_output_mw: float = Field(..., ge=60, le=140)
+    fuel_flow_kg_s: float = Field(..., ge=1.5, le=4.0)
+    air_pressure_kpa: float = Field(..., ge=90, le=220)
+    exhaust_gas_temp_c: float = Field(..., ge=400, le=600)
+    oil_temp_c: float = Field(..., ge=80, le=160)
+    fault: int = Field(0, ge=0, le=1)
 
 
 class SensorBatch(BaseModel):
@@ -46,12 +46,16 @@ class TurbineStatus(BaseModel):
     timestamp: datetime
     health_score: float = Field(..., ge=0, le=100)
     risk_level: RiskLevel
-    exhaust_gas_temp_c: float
+    temperature_c: float
+    rpm: float
+    torque_nm: float
     vibration_mm_s: float
-    discharge_pressure_bar: float
-    turbine_load_mw: float
-    efficiency_pct: float
-    pressure_ratio: float
+    power_output_mw: float
+    fuel_flow_kg_s: float
+    air_pressure_kpa: float
+    exhaust_gas_temp_c: float
+    oil_temp_c: float
+    fault: int = 0
     active_alerts: int = 0
     last_maintenance: datetime | None = None
 

@@ -62,21 +62,23 @@ async def get_sensor_trend(
     Get trend data for a specific sensor.
     
     Available sensors:
-    - exhaust_gas_temp_c
+    - temperature_c
+    - rpm
+    - torque_nm
     - vibration_mm_s
-    - discharge_pressure_bar
-    - turbine_load_mw
+    - power_output_mw
     - fuel_flow_kg_s
-    - rotor_speed_rpm
-    - lube_oil_temp_c
-    - ambient_temp_c
+    - air_pressure_kpa
+    - exhaust_gas_temp_c
+    - oil_temp_c
+    - health_score
+    - anomaly_score
     """
     valid_sensors = [
-        "exhaust_gas_temp_c", "compressor_discharge_temp_c",
-        "vibration_mm_s", "inlet_pressure_bar", "discharge_pressure_bar",
-        "turbine_load_mw", "fuel_flow_kg_s", "rotor_speed_rpm",
-        "lube_oil_temp_c", "ambient_temp_c", "pressure_ratio",
-        "efficiency_pct", "health_score", "anomaly_score",
+        "temperature_c", "rpm", "torque_nm",
+        "vibration_mm_s", "power_output_mw", "fuel_flow_kg_s",
+        "air_pressure_kpa", "exhaust_gas_temp_c", "oil_temp_c",
+        "health_score", "anomaly_score",
     ]
     
     if sensor not in valid_sensors:

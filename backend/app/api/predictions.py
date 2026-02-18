@@ -77,19 +77,21 @@ async def get_failure_prediction(
         # Simple RUL estimation based on sensor trends
         import numpy as np
         
-        vibrations = [r.get("vibration_mm_s", 2.5) for r in readings]
-        temps = [r.get("exhaust_gas_temp_c", 545) for r in readings]
+        vibrations = [r.get("vibration_mm_s", 1.98) for r in readings]
+        temps = [r.get("exhaust_gas_temp_c", 499) for r in readings]
+        faults = [r.get("fault", 0) for r in readings]
         
         vib_trend = np.polyfit(range(len(vibrations)), vibrations, 1)[0]
         temp_trend = np.polyfit(range(len(temps)), temps, 1)[0]
         
         latest_vib = vibrations[-1]
         latest_temp = temps[-1]
+        fault_ratio = sum(faults) / max(len(faults), 1)
         
         # Degradation index
-        vib_dev = max(0, (latest_vib - 2.5) / 2.5)
-        temp_dev = max(0, (latest_temp - 545) / 50)
-        degradation = min(1.0, (vib_dev * 0.5 + temp_dev * 0.5))
+        vib_dev = max(0, (latest_vib - 1.98) / 0.49)
+        temp_dev = max(0, (latest_temp - 499) / 28.8)
+        degradation = min(1.0, (vib_dev * 0.3 + temp_dev * 0.3 + fault_ratio * 0.4))
         
         # Failure probability
         failure_prob = min(1.0, float(np.exp(degradation * 3 - 2)))

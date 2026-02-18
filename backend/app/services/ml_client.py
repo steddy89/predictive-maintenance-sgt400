@@ -99,13 +99,15 @@ class MLModelClient:
         Uses z-score method when Azure ML endpoint is not configured.
         """
         baselines = {
-            "exhaust_gas_temp_c": (545, 8),
-            "vibration_mm_s": (2.5, 0.4),
-            "discharge_pressure_bar": (15.5, 0.3),
-            "turbine_load_mw": (11.8, 0.5),
-            "fuel_flow_kg_s": (3.2, 0.15),
-            "rotor_speed_rpm": (9500, 30),
-            "lube_oil_temp_c": (52, 2),
+            "temperature_c": (901.6, 49.4),
+            "rpm": (15022, 490),
+            "torque_nm": (3494, 204),
+            "vibration_mm_s": (1.98, 0.49),
+            "power_output_mw": (99.5, 10.3),
+            "fuel_flow_kg_s": (2.51, 0.32),
+            "air_pressure_kpa": (150.3, 19.4),
+            "exhaust_gas_temp_c": (498.9, 28.8),
+            "oil_temp_c": (120.1, 10.0),
         }
         
         results = []
@@ -145,8 +147,9 @@ class MLModelClient:
         if len(sensor_data) < 2:
             return {"error": "Need at least 2 data points for forecasting"}
         
-        sensors = ["exhaust_gas_temp_c", "vibration_mm_s", "discharge_pressure_bar",
-                    "turbine_load_mw", "fuel_flow_kg_s"]
+        sensors = ["temperature_c", "rpm", "torque_nm", "vibration_mm_s",
+                    "power_output_mw", "fuel_flow_kg_s", "air_pressure_kpa",
+                    "exhaust_gas_temp_c", "oil_temp_c"]
         
         forecasts = {}
         for sensor in sensors:
