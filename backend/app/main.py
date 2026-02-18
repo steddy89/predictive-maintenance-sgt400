@@ -23,6 +23,7 @@ from app.api.turbine import router as turbine_router
 from app.api.alerts import router as alert_router
 from app.api.predictions import router as prediction_router
 from app.api.health import router as health_router
+from app.api.agents import router as agent_router, set_orchestrator
 from app.core.config import settings
 from app.core.logging_config import setup_logging
 
@@ -40,6 +41,15 @@ async def lifespan(app: FastAPI):
     from app.services.ml_client import MLModelClient
     app.state.ml_client = MLModelClient()
     await app.state.ml_client.initialize()
+
+    # Initialize multi-agent system (Azure AI Foundry Agent Service)
+    from app.agents.orchestrator import OrchestratorAgent
+    from app.services.fabric_client import FabricDataService
+    fabric_service = FabricDataService()
+    orchestrator = OrchestratorAgent(fabric_service)
+    set_orchestrator(orchestrator)
+    app.state.orchestrator = orchestrator
+    logger.info("Multi-agent system initialised (Orchestrator + Fabric Data Agent + Diagnostic Agent)")
     
     yield
     
@@ -82,6 +92,7 @@ app.include_router(health_router, prefix="", tags=["Health"])
 app.include_router(turbine_router, prefix="/api/v1/turbine", tags=["Turbine"])
 app.include_router(prediction_router, prefix="/api/v1/predictions", tags=["Predictions"])
 app.include_router(alert_router, prefix="/api/v1/alerts", tags=["Alerts"])
+app.include_router(agent_router)  # Agent chat & tools (/api/v1/agent/*)
 
 # Serve dashboard SPA
 static_dir = Path(__file__).parent / "static"
