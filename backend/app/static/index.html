@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SGT-400 Predictive Maintenance Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        'turbine-green': '#22c55e',
+        'turbine-yellow': '#eab308',
+        'turbine-orange': '#f97316',
+        'turbine-red': '#ef4444',
+        'dark-bg': '#0f172a',
+        'dark-card': '#1e293b',
+        'dark-border': '#334155',
+      }
+    }
+  }
+}
+</script>
+<style>
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
+  .glow-green { box-shadow: 0 0 15px rgba(34,197,94,0.3); }
+  .glow-yellow { box-shadow: 0 0 15px rgba(234,179,8,0.3); }
+  .glow-orange { box-shadow: 0 0 15px rgba(249,115,22,0.3); }
+  .glow-red { box-shadow: 0 0 15px rgba(239,68,68,0.3); }
+  .pulse-dot { animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+  .fade-in { animation: fadeIn 0.5s ease-in; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+</style>
+</head>
+<body class="bg-dark-bg text-gray-100 min-h-screen">
+
+<!-- Header -->
+<header class="bg-dark-card border-b border-dark-border px-6 py-4">
+  <div class="max-w-7xl mx-auto flex items-center justify-between">
+    <div class="flex items-center gap-4">
+      <div class="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+        </svg>
+      </div>
+      <div>
+        <h1 class="text-xl font-bold">SGT-400 Predictive Maintenance</h1>
+        <p class="text-gray-400 text-sm">Siemens Gas Turbine Monitoring Dashboard</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-4">
+      <span id="riskBadge" class="px-3 py-1 rounded-full text-sm font-semibold"></span>
+      <div class="flex items-center gap-2">
+        <div id="connDot" class="w-2 h-2 rounded-full bg-turbine-green pulse-dot"></div>
+        <span id="connText" class="text-sm text-gray-400">Connected</span>
+      </div>
+      <span id="lastUpdate" class="text-xs text-gray-500"></span>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-7xl mx-auto px-6 py-6 space-y-6">
+
+  <!-- KPI Cards Row -->
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" id="kpiGrid">
+    <!-- Health Score -->
+    <div class="bg-dark-card rounded-xl border border-dark-border p-5 fade-in" id="kpiHealth">
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-gray-400 text-sm font-medium">Health Score</span>
+        <svg class="w-5 h-5 text-turbine-green" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
+      </div>
+      <div class="text-3xl font-bold" id="healthValue">--</div>
+      <div class="w-full bg-gray-700 rounded-full h-2 mt-3">
+        <div id="healthBar" class="h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+      </div>
+    </div>
+    <!-- Anomaly Score -->
+    <div class="bg-dark-card rounded-xl border border-dark-border p-5 fade-in">
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-gray-400 text-sm font-medium">Anomaly Score</span>
+        <svg class="w-5 h-5 text-turbine-yellow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+      </div>
+      <div class="text-3xl font-bold" id="anomalyValue">--</div>
+      <div class="text-sm mt-1" id="anomalyLabel"></div>
+    </div>
+    <!-- RUL -->
+    <div class="bg-dark-card rounded-xl border border-dark-border p-5 fade-in">
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-gray-400 text-sm font-medium">Remaining Useful Life</span>
+        <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      </div>
+      <div class="text-3xl font-bold" id="rulValue">--</div>
+      <div class="text-sm text-gray-400 mt-1" id="rulConfidence"></div>
+    </div>
+    <!-- Risk Level -->
+    <div class="bg-dark-card rounded-xl border border-dark-border p-5 fade-in" id="kpiRisk">
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-gray-400 text-sm font-medium">Risk Level</span>
+        <svg class="w-5 h-5 text-turbine-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+      </div>
+      <div class="text-3xl font-bold" id="riskValue">--</div>
+      <div class="text-sm text-gray-400 mt-1" id="riskRecommendation"></div>
+    </div>
+  </div>
+
+  <!-- Charts + Sensor Readings Row -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <!-- Trend Chart -->
+    <div class="lg:col-span-2 bg-dark-card rounded-xl border border-dark-border p-5">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold">Sensor Trends (24h)</h2>
+        <select id="sensorSelect" class="bg-gray-700 text-gray-200 text-sm rounded-lg px-3 py-1.5 border border-dark-border">
+          <option value="exhaust_gas_temp_c">Exhaust Gas Temp (°C)</option>
+          <option value="vibration_mm_s">Vibration (mm/s)</option>
+          <option value="discharge_pressure_bar">Discharge Pressure (bar)</option>
+          <option value="turbine_load_mw">Turbine Load (MW)</option>
+          <option value="lube_oil_temp_c">Lube Oil Temp (°C)</option>
+          <option value="fuel_flow_kg_s">Fuel Flow (kg/s)</option>
+        </select>
+      </div>
+      <canvas id="trendChart" height="220"></canvas>
+    </div>
+
+    <!-- Live Sensor Readings -->
+    <div class="bg-dark-card rounded-xl border border-dark-border p-5">
+      <h2 class="text-lg font-semibold mb-4">Live Sensor Readings</h2>
+      <div class="space-y-3" id="sensorList"></div>
+    </div>
+  </div>
+
+  <!-- Alerts + Maintenance Row -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <!-- Active Alerts -->
+    <div class="bg-dark-card rounded-xl border border-dark-border p-5">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold">Active Alerts</h2>
+        <span id="alertCount" class="bg-turbine-red/20 text-turbine-red px-2 py-0.5 rounded-full text-xs font-semibold">0</span>
+      </div>
+      <div class="space-y-3" id="alertList">
+        <p class="text-gray-500 text-sm">No active alerts</p>
+      </div>
+    </div>
+
+    <!-- Maintenance Recommendations -->
+    <div class="bg-dark-card rounded-xl border border-dark-border p-5">
+      <h2 class="text-lg font-semibold mb-4">Maintenance Prediction</h2>
+      <div id="maintenancePanel" class="space-y-4">
+        <p class="text-gray-500 text-sm">Loading...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- API Documentation Link -->
+  <div class="bg-dark-card rounded-xl border border-dark-border p-4 flex items-center justify-between">
+    <div>
+      <span class="text-gray-400 text-sm">API Documentation</span>
+      <span class="text-gray-500 text-xs ml-2">Interactive Swagger UI for all endpoints</span>
+    </div>
+    <a href="/docs" target="_blank" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+      Open API Docs →
+    </a>
+  </div>
+</main>
+
+<footer class="border-t border-dark-border mt-8 py-4 text-center text-gray-500 text-xs">
+  SGT-400 Predictive Maintenance System v1.0.0 &middot; Powered by Microsoft Fabric + Azure AI Foundry &middot; FastAPI Backend
+</footer>
+
+<script>
+const API = '';  // Same origin
+let trendChart = null;
+
+// ── Utility Functions ──────────────────────────────────────────
+function riskColor(level) {
+  const m = { LOW: 'turbine-green', MEDIUM: 'turbine-yellow', HIGH: 'turbine-orange', CRITICAL: 'turbine-red' };
+  return m[level] || 'gray-400';
+}
+function riskGlow(level) {
+  const m = { LOW: 'glow-green', MEDIUM: 'glow-yellow', HIGH: 'glow-orange', CRITICAL: 'glow-red' };
+  return m[level] || '';
+}
+function severityBg(sev) {
+  const m = { CRITICAL: 'bg-red-500/20 border-red-500/30', WARNING: 'bg-yellow-500/20 border-yellow-500/30', INFO: 'bg-blue-500/20 border-blue-500/30' };
+  return m[sev] || 'bg-gray-500/20 border-gray-500/30';
+}
+function fmtTime(ts) {
+  const d = new Date(ts);
+  return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+}
+
+// ── Fetch helpers ──────────────────────────────────────────────
+async function api(path) {
+  const res = await fetch(API + path);
+  if (!res.ok) throw new Error(`${res.status}`);
+  return res.json();
+}
+
+// ── KPI Update ─────────────────────────────────────────────────
+async function updateKPIs() {
+  try {
+    const [status, anomaly, failure] = await Promise.all([
+      api('/api/v1/turbine/status'),
+      api('/api/v1/predictions/anomaly'),
+      api('/api/v1/predictions/failure'),
+    ]);
+
+    const s = status.data;
+    const a = anomaly.result;
+    const f = failure.prediction;
+
+    // Health Score
+    const health = s.health_score;
+    document.getElementById('healthValue').textContent = health.toFixed(1) + '%';
+    const hbar = document.getElementById('healthBar');
+    hbar.style.width = health + '%';
+    hbar.className = 'h-2 rounded-full transition-all duration-500 ' +
+      (health >= 80 ? 'bg-turbine-green' : health >= 60 ? 'bg-turbine-yellow' : health >= 40 ? 'bg-turbine-orange' : 'bg-turbine-red');
+
+    // Anomaly
+    const aScore = a.anomaly_score;
+    document.getElementById('anomalyValue').textContent = (aScore * 100).toFixed(1) + '%';
+    const aLabel = document.getElementById('anomalyLabel');
+    if (aScore > 0.7) { aLabel.textContent = 'CRITICAL'; aLabel.className = 'text-sm mt-1 text-turbine-red font-semibold'; }
+    else if (aScore > 0.4) { aLabel.textContent = 'WARNING'; aLabel.className = 'text-sm mt-1 text-turbine-yellow font-semibold'; }
+    else { aLabel.textContent = 'NORMAL'; aLabel.className = 'text-sm mt-1 text-turbine-green font-semibold'; }
+
+    // RUL
+    document.getElementById('rulValue').textContent = f.rul_days.toFixed(1) + ' days';
+    document.getElementById('rulConfidence').textContent = 'Confidence: ' + f.confidence;
+
+    // Risk
+    const risk = f.risk_level || s.risk_level;
+    document.getElementById('riskValue').textContent = risk;
+    document.getElementById('riskValue').className = 'text-3xl font-bold text-' + riskColor(risk);
+    document.getElementById('riskRecommendation').textContent = f.recommendation;
+
+    // Header badge
+    const badge = document.getElementById('riskBadge');
+    badge.textContent = risk;
+    badge.className = 'px-3 py-1 rounded-full text-sm font-semibold bg-' + riskColor(risk) + '/20 text-' + riskColor(risk);
+
+    // Sensor readings panel
+    const sensors = [
+      { name: 'Exhaust Gas Temp', value: s.exhaust_gas_temp_c, unit: '°C', max: 600 },
+      { name: 'Vibration', value: s.vibration_mm_s, unit: 'mm/s', max: 10 },
+      { name: 'Discharge Pressure', value: s.discharge_pressure_bar, unit: 'bar', max: 20 },
+      { name: 'Turbine Load', value: s.turbine_load_mw, unit: 'MW', max: 15 },
+      { name: 'Efficiency', value: s.efficiency_pct, unit: '%', max: 100 },
+      { name: 'Pressure Ratio', value: s.pressure_ratio, unit: '', max: 20 },
+    ];
+    document.getElementById('sensorList').innerHTML = sensors.map(s => `
+      <div class="flex items-center justify-between py-2 border-b border-dark-border last:border-0">
+        <span class="text-gray-400 text-sm">${s.name}</span>
+        <span class="font-mono font-semibold text-sm">${s.value.toFixed(2)} ${s.unit}</span>
+      </div>
+    `).join('');
+
+    // Maintenance panel
+    document.getElementById('maintenancePanel').innerHTML = `
+      <div class="flex items-center gap-3 mb-3">
+        <div class="w-12 h-12 rounded-lg bg-${riskColor(risk)}/20 flex items-center justify-center">
+          <svg class="w-6 h-6 text-${riskColor(risk)}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+        </div>
+        <div>
+          <div class="font-semibold">Failure Probability: ${(f.failure_probability * 100).toFixed(1)}%</div>
+          <div class="text-sm text-gray-400">Degradation Index: ${f.degradation_index.toFixed(3)}</div>
+        </div>
+      </div>
+      <div class="bg-gray-800/50 rounded-lg p-3">
+        <div class="text-sm font-medium text-gray-300 mb-1">Recommendation</div>
+        <div class="text-sm text-gray-400">${f.recommendation}</div>
+      </div>
+      <div class="grid grid-cols-2 gap-3 mt-2">
+        <div class="bg-gray-800/50 rounded-lg p-3 text-center">
+          <div class="text-xs text-gray-400">RUL</div>
+          <div class="text-lg font-bold text-blue-400">${f.rul_days.toFixed(1)}d</div>
+        </div>
+        <div class="bg-gray-800/50 rounded-lg p-3 text-center">
+          <div class="text-xs text-gray-400">Degradation Rate</div>
+          <div class="text-lg font-bold text-gray-200">${(f.degradation_rate * 1e4).toFixed(2)}e-4</div>
+        </div>
+      </div>
+    `;
+
+    // Timestamp
+    document.getElementById('lastUpdate').textContent = 'Updated ' + new Date().toLocaleTimeString();
+    document.getElementById('connDot').className = 'w-2 h-2 rounded-full bg-turbine-green pulse-dot';
+    document.getElementById('connText').textContent = 'Connected';
+  } catch (err) {
+    console.error('KPI update failed:', err);
+    document.getElementById('connDot').className = 'w-2 h-2 rounded-full bg-turbine-red';
+    document.getElementById('connText').textContent = 'Disconnected';
+  }
+}
+
+// ── Alerts ─────────────────────────────────────────────────────
+async function updateAlerts() {
+  try {
+    const data = await api('/api/v1/alerts/');
+    const alerts = data.alerts || [];
+    const active = alerts.filter(a => !a.resolved);
+
+    document.getElementById('alertCount').textContent = active.length;
+
+    if (active.length === 0) {
+      document.getElementById('alertList').innerHTML = '<p class="text-gray-500 text-sm">No active alerts — system nominal</p>';
+      return;
+    }
+
+    document.getElementById('alertList').innerHTML = active.map(a => `
+      <div class="border rounded-lg p-3 ${severityBg(a.severity)}">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-semibold px-2 py-0.5 rounded ${a.severity === 'CRITICAL' ? 'bg-red-500/30 text-red-300' : 'bg-yellow-500/30 text-yellow-300'}">${a.severity}</span>
+          <span class="text-xs text-gray-400">${fmtTime(a.timestamp)}</span>
+        </div>
+        <div class="mt-2 text-sm font-medium">${a.description}</div>
+        <div class="mt-1 text-xs text-gray-400">${a.alarm_code} &middot; Value: ${a.sensor_value} / Threshold: ${a.threshold}</div>
+        ${!a.acknowledged ? `<button onclick="ackAlert('${a.id}')" class="mt-2 text-xs bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded transition-colors">Acknowledge</button>` : '<span class="mt-2 inline-block text-xs text-gray-500">Acknowledged</span>'}
+      </div>
+    `).join('');
+  } catch (err) {
+    console.error('Alert update failed:', err);
+  }
+}
+
+async function ackAlert(id) {
+  try {
+    await fetch(API + '/api/v1/alerts/acknowledge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ alert_id: id }),
+    });
+    updateAlerts();
+  } catch (err) { console.error(err); }
+}
+
+// ── Trend Chart ────────────────────────────────────────────────
+async function updateTrend() {
+  const sensor = document.getElementById('sensorSelect').value;
+  try {
+    const data = await api(`/api/v1/turbine/trend/${sensor}`);
+    const points = data.data || data.trend || [];
+
+    const labels = points.map(p => fmtTime(p.timestamp));
+    const values = points.map(p => p.value);
+
+    if (trendChart) {
+      trendChart.data.labels = labels;
+      trendChart.data.datasets[0].data = values;
+      trendChart.data.datasets[0].label = sensor.replace(/_/g, ' ');
+      trendChart.update('none');
+    } else {
+      const ctx = document.getElementById('trendChart').getContext('2d');
+      trendChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            label: sensor.replace(/_/g, ' '),
+            data: values,
+            borderColor: '#3b82f6',
+            backgroundColor: 'rgba(59,130,246,0.1)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 0,
+            borderWidth: 2,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { labels: { color: '#94a3b8' } },
+          },
+          scales: {
+            x: {
+              ticks: { color: '#64748b', maxTicksLimit: 12 },
+              grid: { color: 'rgba(51,65,85,0.3)' },
+            },
+            y: {
+              ticks: { color: '#64748b' },
+              grid: { color: 'rgba(51,65,85,0.3)' },
+            }
+          },
+          interaction: { intersect: false, mode: 'index' },
+        }
+      });
+    }
+  } catch (err) {
+    console.error('Trend update failed:', err);
+  }
+}
+
+document.getElementById('sensorSelect').addEventListener('change', updateTrend);
+
+// ── Polling ────────────────────────────────────────────────────
+async function init() {
+  await Promise.all([updateKPIs(), updateAlerts(), updateTrend()]);
+  setInterval(updateKPIs, 15000);
+  setInterval(updateAlerts, 20000);
+  setInterval(updateTrend, 30000);
+}
+
+init();
+</script>
+</body>
+</html>

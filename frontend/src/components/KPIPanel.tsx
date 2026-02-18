@@ -92,7 +92,8 @@ export function KPIPanel({
   const healthScore = status?.health_score ?? 0;
   const anomalyScore = anomaly?.anomaly_score ?? 0;
   const failureProb = failure?.failure_probability ?? 0;
-  const rul = failure?.estimated_rul_hours ?? null;
+  const rulDays = failure?.rul_days ?? null;
+  const rulHours = rulDays !== null ? rulDays * 24 : (failure?.estimated_rul_hours ?? null);
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -102,10 +103,10 @@ export function KPIPanel({
         icon={<Gauge className="h-4 w-4" />}
       >
         <p className={`text-3xl font-bold ${riskColor(status?.risk_level ?? 'LOW')}`}>
-          {(healthScore * 100).toFixed(1)}
+          {healthScore.toFixed(1)}
           <span className="text-lg font-normal text-gray-500">%</span>
         </p>
-        {scoreBar(healthScore, 1, 'bg-turbine-green')}
+        {scoreBar(healthScore, 100, 'bg-turbine-green')}
       </Card>
 
       {/* Anomaly Score */}
@@ -164,10 +165,10 @@ export function KPIPanel({
         title="Est. RUL"
         icon={<Clock className="h-4 w-4" />}
       >
-        {rul !== null ? (
+        {rulDays !== null ? (
           <p className="text-3xl font-bold text-turbine-blue">
-            {rul.toFixed(0)}
-            <span className="text-lg font-normal text-gray-500"> hrs</span>
+            {rulDays.toFixed(1)}
+            <span className="text-lg font-normal text-gray-500"> days</span>
           </p>
         ) : (
           <p className="text-2xl font-bold text-gray-500">&mdash;</p>

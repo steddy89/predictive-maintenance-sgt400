@@ -32,8 +32,8 @@ class FabricDataService:
         if self._sample_data is None:
             try:
                 self._sample_data = pd.read_parquet("data/sample/sensor_data_normal.parquet")
-            except FileNotFoundError:
-                logger.warning("Sample data not found. Generating synthetic data...")
+            except (FileNotFoundError, ImportError, Exception) as exc:
+                logger.warning(f"Sample data not loaded ({exc.__class__.__name__}). Generating synthetic data...")
                 self._sample_data = self._generate_synthetic_snapshot()
     
     def _generate_synthetic_snapshot(self) -> pd.DataFrame:

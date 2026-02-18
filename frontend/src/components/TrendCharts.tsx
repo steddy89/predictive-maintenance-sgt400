@@ -43,27 +43,27 @@ const SENSORS: SensorCfg[] = [
     critHi: 15,
   },
   {
-    key: 'compressor_inlet_temp_c',
-    label: 'Compressor Inlet Temp',
-    unit: '°C',
+    key: 'discharge_pressure_bar',
+    label: 'Discharge Pressure',
+    unit: 'bar',
     color: '#3b82f6',
   },
   {
-    key: 'bearing_temp_c',
-    label: 'Bearing Temp',
+    key: 'lube_oil_temp_c',
+    label: 'Lube Oil Temp',
     unit: '°C',
     color: '#8b5cf6',
-    warnHi: 110,
-    critHi: 120,
+    warnHi: 65,
+    critHi: 75,
   },
   {
-    key: 'power_output_mw',
+    key: 'turbine_load_mw',
     label: 'Power Output',
     unit: 'MW',
     color: '#22c55e',
   },
   {
-    key: 'fuel_flow_rate_kg_s',
+    key: 'fuel_flow_kg_s',
     label: 'Fuel Flow Rate',
     unit: 'kg/s',
     color: '#06b6d4',
@@ -150,8 +150,8 @@ export function TrendCharts({ turbineId }: TrendChartsProps) {
   const [selected, setSelected] = useState<string[]>([
     'exhaust_gas_temp_c',
     'vibration_mm_s',
-    'power_output_mw',
-    'bearing_temp_c',
+    'turbine_load_mw',
+    'discharge_pressure_bar',
   ]);
 
   const toggleSensor = (key: string) => {

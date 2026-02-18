@@ -1,0 +1,137 @@
+{
+    "name": "SGT400_Predictive_Maintenance_Pipeline",
+    "description": "Microsoft Fabric Data Pipeline - Medallion Architecture for SGT400 Gas Turbine",
+    "version": "1.0.0",
+
+    "schedule": {
+        "interval": "hourly",
+        "cron_expression": "0 * * * *",
+        "timezone": "UTC",
+        "enabled": true
+    },
+
+    "stages": [
+        {
+            "stage_id": "bronze_ingestion",
+            "name": "Bronze Layer - Raw Ingestion",
+            "notebook_path": "notebooks/01_bronze_ingestion.py",
+            "description": "Ingest raw turbine IoT sensor data and alarm logs into Bronze Delta tables",
+            "compute": {
+                "type": "fabric_spark",
+                "node_size": "Medium",
+                "min_executors": 1,
+                "max_executors": 4
+            },
+            "parameters": {
+                "RAW_DATA_PATH": "Files/raw/sensor_data",
+                "ALARM_RAW_PATH": "Files/raw/alarm_logs",
+                "BRONZE_PATH": "Tables/bronze",
+                "CHECKPOINT_PATH": "Files/checkpoints/bronze"
+            },
+            "retry_policy": {
+                "max_retries": 3,
+                "retry_interval_seconds": 60
+            },
+            "timeout_minutes": 30,
+            "depends_on": []
+        },
+        {
+            "stage_id": "silver_transform",
+            "name": "Silver Layer - Cleaning & Feature Engineering",
+            "notebook_path": "notebooks/02_silver_transform.py",
+            "description": "Clean, validate, and engineer features from Bronze sensor data",
+            "compute": {
+                "type": "fabric_spark",
+                "node_size": "Large",
+                "min_executors": 2,
+                "max_executors": 8
+            },
+            "parameters": {
+                "SOURCE_TABLE": "bronze_sensor_readings",
+                "TARGET_TABLE": "silver_sensor_features",
+                "ROLLING_WINDOWS": [12, 36, 144]
+            },
+            "retry_policy": {
+                "max_retries": 2,
+                "retry_interval_seconds": 120
+            },
+            "timeout_minutes": 60,
+            "depends_on": ["bronze_ingestion"]
+        },
+        {
+            "stage_id": "gold_aggregation",
+            "name": "Gold Layer - KPIs & Model-Ready Data",
+            "notebook_path": "notebooks/03_gold_aggregation.py",
+            "description": "Aggregate to hourly KPIs, compute health scores, create ML datasets",
+            "compute": {
+                "type": "fabric_spark",
+                "node_size": "Large",
+                "min_executors": 2,
+                "max_executors": 8
+            },
+            "parameters": {
+                "SOURCE_TABLE": "silver_sensor_features",
+                "TARGET_TABLES": [
+                    "gold_turbine_hourly_kpis",
+                    "gold_turbine_latest_status",
+                    "gold_alert_history",
+                    "gold_ml_training_data"
+                ]
+            },
+            "retry_policy": {
+                "max_retries": 2,
+                "retry_interval_seconds": 120
+            },
+            "timeout_minutes": 45,
+            "depends_on": ["silver_transform"]
+        }
+    ],
+
+    "alerts": {
+        "on_failure": {
+            "email": ["ops-team@contoso.com"],
+            "teams_webhook": "",
+            "enabled": true
+        },
+        "on_success": {
+            "enabled": false
+        },
+        "sla_breach": {
+            "max_duration_minutes": 120,
+            "enabled": true
+        }
+    },
+
+    "data_quality_gates": {
+        "bronze": {
+            "max_null_percentage": 5.0,
+            "max_duplicate_percentage": 1.0,
+            "min_records_per_run": 100
+        },
+        "silver": {
+            "max_anomaly_rate": 15.0,
+            "required_features_count": 50,
+            "value_range_validation": true
+        },
+        "gold": {
+            "min_turbines": 1,
+            "health_score_range": [0, 100],
+            "required_tables": [
+                "gold_turbine_hourly_kpis",
+                "gold_turbine_latest_status",
+                "gold_alert_history"
+            ]
+        }
+    },
+
+    "fabric_config": {
+        "workspace_id": "${FABRIC_WORKSPACE_ID}",
+        "lakehouse_id": "${FABRIC_LAKEHOUSE_ID}",
+        "capacity_id": "${FABRIC_CAPACITY_ID}",
+        "delta_properties": {
+            "delta.autoOptimize.optimizeWrite": "true",
+            "delta.autoOptimize.autoCompact": "true",
+            "delta.deletedFileRetentionDuration": "interval 7 days"
+        }
+    }
+}

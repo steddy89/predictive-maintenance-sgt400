@@ -7,8 +7,16 @@ interface MaintenancePanelProps {
 }
 
 export function MaintenancePanel({ failure, anomaly }: MaintenancePanelProps) {
-  const recommendations = failure?.recommendations ?? [];
-  const topSensors = anomaly?.top_contributing_sensors ?? [];
+  // Build recommendations from either array or single recommendation string
+  const recommendations: string[] = failure?.recommendations
+    ?? (failure?.recommendation ? [failure.recommendation] : []);
+  // Build contributing sensors from top_contributing_sensors or contributing_sensors
+  const topSensors: { sensor: string; contribution: number }[] =
+    anomaly?.top_contributing_sensors ??
+    (anomaly?.contributing_sensors?.map((s, i) => ({
+      sensor: s,
+      contribution: Math.max(0.05, 1.0 / (i + 1)),
+    })) ?? []);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -55,7 +63,9 @@ export function MaintenancePanel({ failure, anomaly }: MaintenancePanelProps) {
             <div>
               <span className="block text-gray-500">Confidence</span>
               <span className="font-semibold text-gray-300">
-                {((failure.confidence ?? 0) * 100).toFixed(0)}%
+                {typeof failure.confidence === 'number'
+                  ? `${(failure.confidence * 100).toFixed(0)}%`
+                  : failure.confidence}
               </span>
             </div>
             <div>
@@ -67,7 +77,7 @@ export function MaintenancePanel({ failure, anomaly }: MaintenancePanelProps) {
             <div>
               <span className="block text-gray-500">Est. RUL</span>
               <span className="font-semibold text-turbine-blue">
-                {failure.estimated_rul_hours?.toFixed(0) ?? '—'} hrs
+                {failure.rul_days?.toFixed(1) ?? '—'} days
               </span>
             </div>
           </div>

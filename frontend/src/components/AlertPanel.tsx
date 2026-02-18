@@ -54,10 +54,11 @@ export function AlertPanel({ alerts }: AlertPanelProps) {
           </p>
         ) : (
           sorted.map((alert) => {
-            const acked = alert.acknowledged || acknowledgedIds.has(alert.alert_id);
+            const alertId = alert.alert_id ?? alert.id;
+            const acked = alert.acknowledged || acknowledgedIds.has(alertId);
             return (
               <div
-                key={alert.alert_id}
+                key={alertId}
                 className={`border-l-4 rounded-lg p-3 ${
                   severityStyles[alert.severity] ?? 'border-l-gray-600'
                 } ${acked ? 'opacity-50' : ''}`}
@@ -77,20 +78,22 @@ export function AlertPanel({ alerts }: AlertPanelProps) {
                       </span>
                     </div>
                     <p className="text-xs text-gray-300 leading-relaxed">
-                      {alert.message}
+                      {alert.message ?? alert.description}
                     </p>
                     {alert.sensor_name && (
                       <span className="text-[10px] text-gray-500 mt-1 inline-block font-mono">
                         {alert.sensor_name}
-                        {alert.value !== undefined && ` = ${alert.value.toFixed(2)}`}
-                        {alert.threshold !== undefined &&
+                        {alert.value !== undefined && alert.value !== null && ` = ${alert.value.toFixed(2)}`}
+                        {alert.sensor_value !== undefined && alert.sensor_value !== null &&
+                          !alert.value && ` = ${alert.sensor_value.toFixed(2)}`}
+                        {alert.threshold !== undefined && alert.threshold !== null &&
                           ` (threshold: ${alert.threshold})`}
                       </span>
                     )}
                   </div>
                   {!acked && (
                     <button
-                      onClick={() => handleAck(alert.alert_id)}
+                      onClick={() => handleAck(alertId)}
                       className="text-gray-500 hover:text-turbine-green transition-colors flex-shrink-0"
                       title="Acknowledge"
                     >

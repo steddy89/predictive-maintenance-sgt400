@@ -23,26 +23,33 @@ export interface AnomalyResult {
   anomaly_score: number;
   raw_score: number;
   contributing_sensors: string[];
+  top_contributing_sensors?: { sensor: string; contribution: number }[];
 }
 
 export interface FailurePrediction {
   failure_probability: number;
   rul_days: number | null;
+  estimated_rul_hours?: number | null;
   degradation_index: number;
   degradation_rate: number | null;
-  confidence: string;
+  confidence: string | number;
   recommendation: string;
+  recommendations?: string[];
   risk_level: RiskLevel;
 }
 
 export interface Alert {
   id: string;
+  alert_id?: string;
   timestamp: string;
   turbine_id: string;
   alarm_code: string;
   description: string;
+  message?: string;
   severity: AlertSeverity;
+  sensor_name?: string;
   sensor_value: number | null;
+  value?: number;
   threshold: number | null;
   acknowledged: boolean;
   resolved: boolean;

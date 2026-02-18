@@ -82,6 +82,9 @@ predictive-maintenance-sgt400/
 │   │   ├── 01_bronze_ingestion.py # Raw IoT → Bronze Delta tables
 │   │   ├── 02_silver_transform.py # Cleaning, feature engineering
 │   │   └── 03_gold_aggregation.py # KPIs, health scores, ML datasets
+│   ├── pipelines/
+│   │   ├── fabric_pipeline.json   # Pipeline config (schedule, quality gates)
+│   │   └── pipeline_orchestrator.py # Fabric REST API orchestrator
 │   └── schemas/
 │       └── lakehouse_config.json
 ├── ml-layer/
@@ -90,7 +93,12 @@ predictive-maintenance-sgt400/
 │   │   └── forecasting_rul.py     # BiLSTM forecaster + RUL estimator
 │   ├── deployment/
 │   │   ├── deploy_models.py       # Azure AI Foundry deployment
-│   │   └── score_anomaly.py       # Scoring entry point
+│   │   ├── score_anomaly.py       # Anomaly scoring entry point
+│   │   ├── score_forecast.py      # Forecast scoring entry point
+│   │   ├── conda_anomaly.yml      # Anomaly model conda environment
+│   │   └── conda_forecast.yml     # Forecast model conda environment
+│   ├── training/
+│   │   └── train_pipeline.py      # End-to-end training orchestration
 │   └── monitoring/
 │       └── drift_detection.py     # KS-test, PSI drift monitoring
 ├── backend/
@@ -121,6 +129,8 @@ predictive-maintenance-sgt400/
 │   │   ├── types/api.ts           # TypeScript interfaces
 │   │   ├── services/api.ts        # Axios API layer
 │   │   ├── hooks/usePolling.ts    # Polling custom hook
+│   │   ├── utils/
+│   │   │   └── formatters.ts     # Sensor value & UI formatting
 │   │   └── components/
 │   │       ├── Header.tsx
 │   │       ├── KPIPanel.tsx
@@ -137,6 +147,9 @@ predictive-maintenance-sgt400/
 │   └── alert_engine.py            # Threshold + ML-score rules, webhooks
 ├── scripts/
 │   └── generate_sample_data.py    # Synthetic SGT-400 data generator
+├── docs/
+│   ├── ARCHITECTURE.md            # Detailed system architecture
+│   └── DEPLOYMENT.md              # Step-by-step deployment guide
 ├── docker-compose.yml             # Local dev stack
 ├── .env.template                  # Environment variable template
 ├── .gitignore
